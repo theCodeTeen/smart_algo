@@ -1,0 +1,19 @@
+{
+  "name": "smart_algo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "googleapis": "^144.0.0",
+    "node-cron": "^3.0.3",
+    "smartapi-javascript": "^1.0.27",
+    "speakeasy": "^2.0.0"
+  }
+}
