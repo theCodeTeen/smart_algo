@@ -1,5 +1,29 @@
+# Environment variables (contains API keys, secrets)
 .env
-node_modules
+
+# Google Service Account JSON files (sensitive credentials)
+*.json
+!package.json
+!package-lock.json
+
+# Node modules
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
 error.log
-package-lock.json
-constant.js
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp

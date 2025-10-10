@@ -10,7 +10,7 @@ const api = new SmartAPI({
 });
 
 const auth = new google.auth.GoogleAuth({
-  keyFile: "/Users/jaydeepzala/Dev/Projects/smart_algo/smart-algo-474617-07f7458ed064.json",
+  keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_PATH,
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
 
