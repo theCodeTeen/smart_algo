@@ -58,16 +58,54 @@ async function fetchOHLCData() {
 
     const jwtToken = session.data.jwtToken;
 
-    const payload = {
-      mode: "FULL",
-      exchangeTokens: {
-        NSE: tokens,
-      },
-    };
+    // Get current 2-hour OHLC using historical candle data
+    const now = new Date();
+    const fromTime = new Date(now.getTime() - 3 * 60 * 60 * 1000); // 3 hours ago for safety
+    
+    // Format dates as "YYYY-MM-DD HH:MM"
+    const toDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const fromDate = `${fromTime.getFullYear()}-${String(fromTime.getMonth() + 1).padStart(2, '0')}-${String(fromTime.getDate()).padStart(2, '0')} ${String(fromTime.getHours()).padStart(2, '0')}:${String(fromTime.getMinutes()).padStart(2, '0')}`;
+    
+    const ohlcData = [];
+    
+    // Fetch 1-hour candle data for each stock (latest hour)
+    for (let i = 0; i < scripts.length; i++) {
+      try {
+        const historicParam = {
+          exchange: "NSE",
+          symboltoken: tokens[i],
+          interval: "ONE_HOUR",
+          fromdate: fromDate,
+          todate: toDate
+        };
 
-    const response = await api.marketData(payload, jwtToken);
-    const fullData = response?.data?.fetched || [];
-    return fullData;
+        const candles = await api.getCandleData(historicParam, jwtToken);
+        
+        if (candles?.data && candles.data.length > 0) {
+          // Get the latest candle (most recent hour)
+          const latestCandle = candles.data[candles.data.length - 1];
+          
+          // SmartAPI candle format: [timestamp, open, high, low, close, volume]
+          ohlcData.push({
+            symbolToken: tokens[i],
+            tradingSymbol: scripts[i],
+            open: latestCandle[1],
+            high: latestCandle[2],
+            low: latestCandle[3],
+            close: latestCandle[4],
+            ltp: latestCandle[4], // Last traded price (close of the candle)
+            volume: latestCandle[5] || 0,
+            averagePrice: ((latestCandle[1] + latestCandle[4]) / 2).toFixed(2) // Average of open and close
+          });
+        } else {
+          console.warn(`⚠️  No candle data for ${scripts[i]}`);
+        }
+      } catch (err) {
+        console.error(`Error fetching candle for ${scripts[i]}:`, err.message);
+      }
+    }
+    
+    return ohlcData;
   } catch (error) {
     console.error("Error fetching OHLC data:", error);
     return [];
@@ -505,14 +543,14 @@ cron.schedule("15 9 * * 1-5", fetchAndUpdateAll, {
   timezone: "Asia/Kolkata",
 });
 
-// 2. Hourly Updates: 10:00 AM, 11:00 AM, 12:00 PM, 1:00 PM, 2:00 PM IST (Monday-Friday)
-cron.schedule("0 10-14 * * 1-5", fetchAndUpdateAll, {
+// 2. First 2-hour Update: 11:15 AM IST (Monday-Friday)
+cron.schedule("15 11 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 3. Pre-Market Close: 3:00 PM IST (Monday-Friday)
-cron.schedule("0 15 * * 1-5", fetchAndUpdateAll, {
+// 3. Second 2-hour Update: 1:15 PM IST (Monday-Friday)
+cron.schedule("15 13 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
@@ -523,12 +561,17 @@ cron.schedule("15 15 * * 1-5", fetchAndUpdateAll, {
   timezone: "Asia/Kolkata",
 });
 
+cron.schedule("15 15 * * 1-5", fetchAndUpdateAll, {
+  scheduled: true,
+  timezone: "Asia/Kolkata",
+});
+
 console.log("\n" + "=".repeat(80));
 console.log("🚀 Smart Algo OHLC Tracker - PRODUCTION MODE");
 console.log("=".repeat(80));
 console.log("📊 Tracking: 50 stocks across individual sheets");
-console.log("⏰ Schedule: Monday-Friday, 9:15 AM - 3:15 PM IST");
+console.log("⏰ Schedule: Monday-Friday, every 2 ˳hours from market open to close");
 console.log("🛡️  Protection: Holiday skip (NSE holidays)");
-console.log("📅 Updates: 9:15 AM, 10 AM, 11 AM, 12 PM, 1 PM, 2 PM, 3 PM, 3:15 PM");
+console.log("📅 Updates: 9:15 AM, 11:15 AM, 1:15 PM, 3:15 PM IST");
 console.log("🔗 Spreadsheet: https://docs.google.com/spreadsheets/d/1FNvmY09AhoraMbEG1XTSFY2ZmTX-zWR6xUKzBSGmaqs/edit");
 console.log("=".repeat(80) + "\n");
