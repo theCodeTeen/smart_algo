@@ -58,18 +58,25 @@ async function fetchOHLCData() {
 
     const jwtToken = session.data.jwtToken;
 
-    // Get 2-hour OHLC by aggregating last 2 hourly candles
-    const now = new Date();
-    // Fetch last 3 hours to ensure we get at least 2 complete hourly candles
-    const fromTime = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    // Get the exact previous hour's candle (e.g., at 10:15, get 10:00-10:59 candle)
+    const now = new Date();    
+    // Calculate start of current hour (e.g., 10:15 → 10:00)
+    const hourStart = new Date(now);
+    hourStart.setMinutes(0);
+    hourStart.setSeconds(0);
+    hourStart.setMilliseconds(0);
+    
+    // Calculate end of current hour (e.g., 10:00 → 11:00)
+    const hourEnd = new Date(hourStart);
+    hourEnd.setHours(hourStart.getHours() + 1);
     
     // Format dates as "YYYY-MM-DD HH:MM"
-    const toDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const fromDate = `${fromTime.getFullYear()}-${String(fromTime.getMonth() + 1).padStart(2, '0')}-${String(fromTime.getDate()).padStart(2, '0')} ${String(fromTime.getHours()).padStart(2, '0')}:${String(fromTime.getMinutes()).padStart(2, '0')}`;
+    const fromDate = `${hourStart.getFullYear()}-${String(hourStart.getMonth() + 1).padStart(2, '0')}-${String(hourStart.getDate()).padStart(2, '0')} ${String(hourStart.getHours()).padStart(2, '0')}:00`;
+    const toDate = `${hourEnd.getFullYear()}-${String(hourEnd.getMonth() + 1).padStart(2, '0')}-${String(hourEnd.getDate()).padStart(2, '0')} ${String(hourEnd.getHours()).padStart(2, '0')}:00`;
     
     const ohlcData = [];
     
-    // Fetch hourly candles and aggregate last 2 to create 2-hour candles
+    // Fetch latest hourly candle for each stock
     for (let i = 0; i < scripts.length; i++) {
       try {
         const historicParam = {
@@ -82,33 +89,11 @@ async function fetchOHLCData() {
 
         const candles = await api.getCandleData(historicParam, jwtToken);
         
-        if (candles?.data && candles.data.length >= 2) {
-          // Get the last 2 hourly candles to create a 2-hour candle
-          const secondLastCandle = candles.data[candles.data.length - 2];
+        if (candles?.data && candles.data.length > 0) {
+          // Get the latest hourly candle (most recent complete hour)
           const latestCandle = candles.data[candles.data.length - 1];
           
           // SmartAPI candle format: [timestamp, open, high, low, close, volume]
-          // Aggregate 2 hours: Open from first, High/Low from both, Close from last
-          const open = secondLastCandle[1];
-          const high = Math.max(secondLastCandle[2], latestCandle[2]);
-          const low = Math.min(secondLastCandle[3], latestCandle[3]);
-          const close = latestCandle[4];
-          const volume = (secondLastCandle[5] || 0) + (latestCandle[5] || 0);
-          
-          ohlcData.push({
-            symbolToken: tokens[i],
-            tradingSymbol: scripts[i],
-            open: open,
-            high: high,
-            low: low,
-            close: close,
-            ltp: close, // Last traded price (close of the 2-hour period)
-            volume: volume,
-            averagePrice: ((open + close) / 2).toFixed(2) // Average of 2-hour open and close
-          });
-        } else if (candles?.data && candles.data.length === 1) {
-          // Fallback: If only 1 candle available (edge case), use it
-          const latestCandle = candles.data[0];
           ohlcData.push({
             symbolToken: tokens[i],
             tradingSymbol: scripts[i],
@@ -116,9 +101,9 @@ async function fetchOHLCData() {
             high: latestCandle[2],
             low: latestCandle[3],
             close: latestCandle[4],
-            ltp: latestCandle[4],
+            ltp: latestCandle[4], // Last traded price (close of the hour)
             volume: latestCandle[5] || 0,
-            averagePrice: ((latestCandle[1] + latestCandle[4]) / 2).toFixed(2)
+            averagePrice: ((latestCandle[1] + latestCandle[4]) / 2).toFixed(2) // Average of hourly open and close
           });
         } else {
           console.warn(`⚠️  No candle data for ${scripts[i]}`);
@@ -558,32 +543,44 @@ async function fetchAndUpdateAll() {
 
 }
 
-// PRODUCTION CRON SCHEDULES
+// 1. 9:15 AM - Fetch 9:00-10:00 candle (includes market open at 9:15)
+cron.schedule("15 9 * * 1-5", fetchAndUpdateAll, {
+  scheduled: true,
+  timezone: "Asia/Kolkata",
+});
 
-// 1. First Update: 10:15 AM IST (1 hour after market open) - Monday-Friday
-//    Uses 9:00-10:00 AM candle (includes market open at 9:15)
+// 2. 10:15 AM - Fetch 10:00-11:00 candle
 cron.schedule("15 10 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 2. Second Update: 12:15 PM IST (2 hours later) - Monday-Friday
-//    Aggregates 10:00-11:00 + 11:00-12:00 candles = 2-hour OHLC
+// 3. 11:15 AM - Fetch 11:00-12:00 candle
+cron.schedule("15 11 * * 1-5", fetchAndUpdateAll, {
+  scheduled: true,
+  timezone: "Asia/Kolkata",
+});
+
+// 4. 12:15 PM - Fetch 12:00-1:00 candle
 cron.schedule("15 12 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 3. Third Update: 2:15 PM IST (2 hours later) - Monday-Friday
-//    Aggregates 12:00-1:00 + 1:00-2:00 candles = 2-hour OHLC
+// 5. 1:15 PM - Fetch 1:00-2:00 candle
+cron.schedule("15 13 * * 1-5", fetchAndUpdateAll, {
+  scheduled: true,
+  timezone: "Asia/Kolkata",
+});
+
+// 6. 2:15 PM - Fetch 2:00-3:00 candle
 cron.schedule("15 14 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 4. Final Update: 3:30 PM IST (market close) - Monday-Friday
-//    Aggregates 2:00-3:00 + 3:00-3:30 candles (or uses latest available)
-cron.schedule("30 15 * * 1-5", fetchAndUpdateAll, {
+// 7. 3:15 PM - Fetch 3:00-4:00 candle (or latest before market close at 3:30)
+cron.schedule("15 15 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
@@ -592,9 +589,9 @@ console.log("\n" + "=".repeat(80));
 console.log("🚀 Smart Algo OHLC Tracker - PRODUCTION MODE");
 console.log("=".repeat(80));
 console.log("📊 Tracking: 50 stocks across individual sheets");
-console.log("⏰ Schedule: Monday-Friday, 4 updates during market hours");
+console.log("⏰ Schedule: Monday-Friday, hourly updates during market hours");
 console.log("🛡️  Protection: Holiday skip (NSE holidays)");
-console.log("📅 Updates: 10:15 AM, 12:15 PM, 2:15 PM, 3:30 PM IST");
-console.log("📈 Data: 2-hour aggregated OHLC candles");
+console.log("📅 Updates: 9:15, 10:15, 11:15, 12:15, 1:15, 2:15, 3:15 PM IST");
+console.log("📈 Data: Hourly OHLC candles (latest complete hour)");
 console.log("🔗 Spreadsheet: https://docs.google.com/spreadsheets/d/1FNvmY09AhoraMbEG1XTSFY2ZmTX-zWR6xUKzBSGmaqs/edit");
 console.log("=".repeat(80) + "\n");
