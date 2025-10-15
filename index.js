@@ -543,44 +543,44 @@ async function fetchAndUpdateAll() {
 
 }
 
-// 1. 9:15 AM - Fetch 9:00-10:00 candle (includes market open at 9:15)
-cron.schedule("15 9 * * 1-5", fetchAndUpdateAll, {
+// 1. 10:14 AM - Fetch 9:00-10:00 candle (nearly complete, 59 min data)
+cron.schedule("14 10 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 2. 10:15 AM - Fetch 10:00-11:00 candle
-cron.schedule("15 10 * * 1-5", fetchAndUpdateAll, {
+// 2. 11:14 AM - Fetch 10:00-11:00 candle (nearly complete, 59 min data)
+cron.schedule("14 11 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 3. 11:15 AM - Fetch 11:00-12:00 candle
-cron.schedule("15 11 * * 1-5", fetchAndUpdateAll, {
+// 3. 12:14 PM - Fetch 11:00-12:00 candle (nearly complete, 59 min data)
+cron.schedule("14 12 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 4. 12:15 PM - Fetch 12:00-1:00 candle
-cron.schedule("15 12 * * 1-5", fetchAndUpdateAll, {
+// 4. 1:14 PM - Fetch 12:00-1:00 candle (nearly complete, 59 min data)
+cron.schedule("14 13 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 5. 1:15 PM - Fetch 1:00-2:00 candle
-cron.schedule("15 13 * * 1-5", fetchAndUpdateAll, {
+// 5. 2:14 PM - Fetch 1:00-2:00 candle (nearly complete, 59 min data)
+cron.schedule("14 14 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 6. 2:15 PM - Fetch 2:00-3:00 candle
-cron.schedule("15 14 * * 1-5", fetchAndUpdateAll, {
+// 6. 3:14 PM - Fetch 2:00-3:00 candle (nearly complete, 59 min data)
+cron.schedule("14 15 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 7. 3:15 PM - Fetch 3:00-4:00 candle (or latest before market close at 3:30)
-cron.schedule("15 15 * * 1-5", fetchAndUpdateAll, {
+// 7. 3:29 PM - Fetch 3:00-3:30 candle (just before market close)
+cron.schedule("29 15 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
@@ -589,9 +589,9 @@ console.log("\n" + "=".repeat(80));
 console.log("🚀 Smart Algo OHLC Tracker - PRODUCTION MODE");
 console.log("=".repeat(80));
 console.log("📊 Tracking: 50 stocks across individual sheets");
-console.log("⏰ Schedule: Monday-Friday, hourly updates during market hours");
+console.log("⏰ Schedule: Monday-Friday, hourly updates at :14 (near hour end)");
 console.log("🛡️  Protection: Holiday skip (NSE holidays)");
-console.log("📅 Updates: 9:15, 10:15, 11:15, 12:15, 1:15, 2:15, 3:15 PM IST");
-console.log("📈 Data: Hourly OHLC candles (latest complete hour)");
+console.log("📅 Updates: 10:14, 11:14, 12:14, 1:14, 2:14, 3:14, 3:29 PM IST");
+console.log("📈 Data: Hourly OHLC candles (59 min complete data per hour)");
 console.log("🔗 Spreadsheet: https://docs.google.com/spreadsheets/d/1FNvmY09AhoraMbEG1XTSFY2ZmTX-zWR6xUKzBSGmaqs/edit");
 console.log("=".repeat(80) + "\n");
