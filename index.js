@@ -58,21 +58,25 @@ async function fetchOHLCData() {
 
     const jwtToken = session.data.jwtToken;
 
-    // Get the exact previous hour's candle (e.g., at 10:15, get 10:00-10:59 candle)
+    // Get the PREVIOUS hour's candle (e.g., at 10:14, get 9:00-10:00 candle)
     const now = new Date();    
-    // Calculate start of current hour (e.g., 10:15 → 10:00)
+    
+    // Calculate start of PREVIOUS hour (e.g., 10:14 → 9:00)
     const hourStart = new Date(now);
     hourStart.setMinutes(0);
     hourStart.setSeconds(0);
     hourStart.setMilliseconds(0);
+    hourStart.setHours(hourStart.getHours() - 1); // GO BACK 1 HOUR
     
-    // Calculate end of current hour (e.g., 10:00 → 11:00)
+    // Calculate end of PREVIOUS hour (e.g., 9:00 → 10:00)
     const hourEnd = new Date(hourStart);
     hourEnd.setHours(hourStart.getHours() + 1);
     
     // Format dates as "YYYY-MM-DD HH:MM"
     const fromDate = `${hourStart.getFullYear()}-${String(hourStart.getMonth() + 1).padStart(2, '0')}-${String(hourStart.getDate()).padStart(2, '0')} ${String(hourStart.getHours()).padStart(2, '0')}:00`;
     const toDate = `${hourEnd.getFullYear()}-${String(hourEnd.getMonth() + 1).padStart(2, '0')}-${String(hourEnd.getDate()).padStart(2, '0')} ${String(hourEnd.getHours()).padStart(2, '0')}:00`;
+    
+    console.log(`📊 Fetching candle: ${fromDate} to ${toDate}`);
     
     const ohlcData = [];
     
