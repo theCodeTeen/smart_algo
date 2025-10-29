@@ -38,10 +38,11 @@ const LTP_SPREADSHEET_ID = "1FNvmY09AhoraMbEG1XTSFY2ZmTX-zWR6xUKzBSGmaqs";
 const LTP_RANGE = "Sheet1!A1:Z1000";
 const OHLC_SPREADSHEET_ID = "1FNvmY09AhoraMbEG1XTSFY2ZmTX-zWR6xUKzBSGmaqs";
 
+
 async function fetchOHLCData() {
   try {
     const totp = speakeasy.totp({
-      secret: process.env.TOTP_SECRET,
+      secret: process.env.TOTP_SECRET, 
       encoding: "base32",
     });
 
@@ -58,23 +59,83 @@ async function fetchOHLCData() {
 
     const jwtToken = session.data.jwtToken;
 
-    // Get the PREVIOUS hour's candle (e.g., at 10:14, get 9:00-10:00 candle)
-    const now = new Date();    
+    // Market-aligned hourly candles: 9:15 AM to 3:30 PM
+    // Candle structure: 9:15-10:15, 10:15-11:15, 11:15-12:15, 12:15-1:15, 1:15-2:15, 2:15-3:15, 3:15-3:30
+    const now = new Date();
+    const istTime = now.toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
     
-    // Calculate start of PREVIOUS hour (e.g., 10:14 → 9:00)
-    const hourStart = new Date(now);
-    hourStart.setMinutes(0);
-    hourStart.setSeconds(0);
-    hourStart.setMilliseconds(0);
-    hourStart.setHours(hourStart.getHours() - 1); // GO BACK 1 HOUR
+    const [hourStr, minuteStr] = istTime.split(":");
+    const currentHour = parseInt(hourStr);
+    const currentMinute = parseInt(minuteStr);
     
-    // Calculate end of PREVIOUS hour (e.g., 9:00 → 10:00)
-    const hourEnd = new Date(hourStart);
-    hourEnd.setHours(hourStart.getHours() + 1);
+    let hourStart, hourEnd;
     
-    // Format dates as "YYYY-MM-DD HH:MM"
-    const fromDate = `${hourStart.getFullYear()}-${String(hourStart.getMonth() + 1).padStart(2, '0')}-${String(hourStart.getDate()).padStart(2, '0')} ${String(hourStart.getHours()).padStart(2, '0')}:00`;
-    const toDate = `${hourEnd.getFullYear()}-${String(hourEnd.getMonth() + 1).padStart(2, '0')}-${String(hourEnd.getDate()).padStart(2, '0')} ${String(hourEnd.getHours()).padStart(2, '0')}:00`;
+    // Special handling for 3:29 PM - use 4:15 instead (since 3:15 already gets hourly data)
+    if (currentHour === 15 && currentMinute === 29) {
+      // Fetch 3:15-4:15 using ONE_HOUR interval
+      const istDateStr = now.toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+      const [day, month, year] = istDateStr.split("/");
+      hourStart = new Date(`${year}-${month}-${day}T15:15:00+05:30`);
+      hourEnd = new Date(`${year}-${month}-${day}T16:15:00+05:30`); // 4:15 PM (next hour)
+    } else {
+      // Market-aligned hourly candles starting from 9:15 AM
+      // At 10:14, we want the candle that STARTED at 9:15 (not 10:15)
+      // Request from 9:15 to 10:15 to ensure we get the full candle data
+      // Then we'll filter to get only the candle starting at 9:15
+      // At 10:14 → fetch candle that started at 9:15
+      // At 11:14 → fetch candle that started at 10:15
+      // At 12:14 → fetch candle that started at 11:15
+      // At 1:14 → fetch candle that started at 12:15
+      // At 2:14 → fetch candle that started at 1:15
+      // At 3:14 → fetch candle that started at 2:15
+      
+      // Get IST date string (YYYY-MM-DD format)
+      const istDateStr = now.toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+      const [day, month, year] = istDateStr.split("/");
+      
+      // Previous hour's start time (market-aligned at :15)
+      const prevHour = currentHour - 1;
+      
+      // Construct date string in IST timezone
+      // Request up to current hour:15 to get complete candle data
+      hourStart = new Date(`${year}-${month}-${day}T${String(prevHour).padStart(2, '0')}:15:00+05:30`);
+      hourEnd = new Date(`${year}-${month}-${day}T${String(currentHour).padStart(2, '0')}:15:00+05:30`); // Request up to current hour:15
+    }
+    
+    // Format dates as "YYYY-MM-DD HH:MM" in IST timezone
+    const formatISTDate = (date) => {
+      const istStr = date.toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+      // Convert "DD/MM/YYYY, HH:MM" to "YYYY-MM-DD HH:MM"
+      const [datePart, timePart] = istStr.split(", ");
+      const [day, month, year] = datePart.split("/");
+      return `${year}-${month}-${day} ${timePart}`;
+    };
+    
+    const fromDate = formatISTDate(hourStart);
+    const toDate = formatISTDate(hourEnd);
     
     console.log(`📊 Fetching candle: ${fromDate} to ${toDate}`);
     
@@ -83,10 +144,13 @@ async function fetchOHLCData() {
     // Fetch latest hourly candle for each stock
     for (let i = 0; i < scripts.length; i++) {
       try {
+        // Use ONE_HOUR interval for all candles (including 3:29 PM which fetches 3:15-4:15)
+        const interval = "ONE_HOUR";
+        
         const historicParam = {
           exchange: "NSE",
           symboltoken: tokens[i],
-          interval: "ONE_HOUR",
+          interval: interval,
           fromdate: fromDate,
           todate: toDate
         };
@@ -94,8 +158,58 @@ async function fetchOHLCData() {
         const candles = await api.getCandleData(historicParam, jwtToken);
         
         if (candles?.data && candles.data.length > 0) {
-          // Get the latest hourly candle (most recent complete hour)
-          const latestCandle = candles.data[candles.data.length - 1];
+          // Find the candle that starts EXACTLY at our expected start time
+          // Candle format: [timestamp, open, high, low, close, volume]
+          // timestamp is in milliseconds (or seconds)
+          const expectedStartTime = hourStart.getTime();
+          
+          // Find the candle that starts at our exact expected time
+          let selectedCandle = null;
+          
+          for (const candle of candles.data) {
+            const candleStartTime = candle[0]; // timestamp
+            // Check if timestamp is in seconds (10 digits) or milliseconds (13 digits)
+            const candleTime = candleStartTime < 10000000000 
+              ? candleStartTime * 1000  // Convert seconds to milliseconds
+              : candleStartTime;
+            
+            // Find candle that starts exactly at our expected time (within 1 minute tolerance)
+            const timeDiff = Math.abs(candleTime - expectedStartTime);
+            if (timeDiff <= 60 * 1000) { // 1 minute tolerance
+              selectedCandle = candle;
+              break; // Found exact match, stop searching
+            }
+          }
+          
+          // If no exact match, try to find the one that starts BEFORE our current time
+          // (this ensures we get the previous hour's candle, not next hour's)
+          if (!selectedCandle) {
+            for (const candle of candles.data) {
+              const candleStartTime = candle[0];
+              const candleTime = candleStartTime < 10000000000 
+                ? candleStartTime * 1000 
+                : candleStartTime;
+              
+              // Take the candle that starts closest BEFORE our expected time
+              if (candleTime <= expectedStartTime) {
+                if (!selectedCandle || candleTime > (selectedCandle[0] < 10000000000 ? selectedCandle[0] * 1000 : selectedCandle[0])) {
+                  selectedCandle = candle;
+                }
+              }
+            }
+          }
+          
+          // Last resort: take first candle
+          if (!selectedCandle && candles.data.length > 0) {
+            selectedCandle = candles.data[0];
+          }
+          
+          if (!selectedCandle) {
+            console.warn(`⚠️  No matching candle found for ${scripts[i]}`);
+            continue;
+          }
+          
+          const latestCandle = selectedCandle;
           
           // SmartAPI candle format: [timestamp, open, high, low, close, volume]
           ohlcData.push({
@@ -251,7 +365,7 @@ async function appendOHLCData(authClient, timestamp, ohlcArray) {
         stockData.low || 0,
         stockData.close || stockData.ltp || 0,
         stockData.tradeVolume || stockData.volume || 0,
-        stockData.avgPrice || stockData.atp || 0,
+        stockData.averagePrice || stockData.avgPrice || stockData.atp || 0,
       ]);
 
       await sheets.spreadsheets.values.update({
@@ -268,14 +382,14 @@ async function appendOHLCData(authClient, timestamp, ohlcArray) {
         stockData.low || 0,
         stockData.close || stockData.ltp || 0,
         stockData.tradeVolume || stockData.volume || 0,
-        stockData.avgPrice || stockData.atp || 0,
+        stockData.averagePrice || stockData.avgPrice || stockData.atp || 0,
       ];
 
       await sheets.spreadsheets.values.append({
         spreadsheetId: OHLC_SPREADSHEET_ID,
         range: `'${sheetName}'!A:G`,
-        valueInputOption: "RAW",
-        insertDataOption: "INSERT_ROWS",
+    valueInputOption: "RAW",
+    insertDataOption: "INSERT_ROWS",
         resource: { values: [newRow] },
       });
     }
@@ -462,7 +576,7 @@ async function appendOHLCData(authClient, timestamp, ohlcArray) {
     try {
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId: OHLC_SPREADSHEET_ID,
-        resource: {
+    resource: {
           requests: [
             {
               deleteSheet: {
@@ -547,55 +661,58 @@ async function fetchAndUpdateAll() {
 
 }
 
-// 1. 10:14 AM - Fetch 9:00-10:00 candle (nearly complete, 59 min data)
+// Market-aligned hourly candles starting from 9:15 AM
+// 1. 10:14 AM - Fetch 9:15-10:15 candle (market-aligned, 1 hour)
 cron.schedule("14 10 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 2. 11:14 AM - Fetch 10:00-11:00 candle (nearly complete, 59 min data)
+// 2. 11:14 AM - Fetch 10:15-11:15 candle (market-aligned, 1 hour)
 cron.schedule("14 11 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 3. 12:14 PM - Fetch 11:00-12:00 candle (nearly complete, 59 min data)
+// 3. 12:14 PM - Fetch 11:15-12:15 candle (market-aligned, 1 hour)
 cron.schedule("14 12 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 4. 1:14 PM - Fetch 12:00-1:00 candle (nearly complete, 59 min data)
+// 4. 1:14 PM - Fetch 12:15-1:15 candle (market-aligned, 1 hour)
 cron.schedule("14 13 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 5. 2:14 PM - Fetch 1:00-2:00 candle (nearly complete, 59 min data)
+// 5. 2:14 PM - Fetch 1:15-2:15 candle (market-aligned, 1 hour)
 cron.schedule("14 14 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 6. 3:14 PM - Fetch 2:00-3:00 candle (nearly complete, 59 min data)
+// 6. 3:14 PM - Fetch 2:15-3:15 candle (market-aligned, 1 hour)
 cron.schedule("14 15 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
-// 7. 3:29 PM - Fetch 3:00-3:30 candle (just before market close)
+// 7. 3:29 PM - Fetch 3:15-4:15 candle (instead of 3:29, use 4:15 since 3:15 already gets hourly data)
 cron.schedule("29 15 * * 1-5", fetchAndUpdateAll, {
   scheduled: true,
   timezone: "Asia/Kolkata",
 });
 
+
 console.log("\n" + "=".repeat(80));
 console.log("🚀 Smart Algo OHLC Tracker - PRODUCTION MODE");
 console.log("=".repeat(80));
 console.log("📊 Tracking: 50 stocks across individual sheets");
-console.log("⏰ Schedule: Monday-Friday, hourly updates at :14 (near hour end)");
+console.log("⏰ Schedule: Monday-Friday, market-aligned hourly candles");
 console.log("🛡️  Protection: Holiday skip (NSE holidays)");
 console.log("📅 Updates: 10:14, 11:14, 12:14, 1:14, 2:14, 3:14, 3:29 PM IST");
-console.log("📈 Data: Hourly OHLC candles (59 min complete data per hour)");
+console.log("📈 Market Hours: 9:15 AM - 3:30 PM IST");
+console.log("🕯️  Candle Structure: 9:15-10:14, 10:15-11:14, 11:15-12:14, 12:15-1:14, 1:15-2:14, 2:15-3:14, 3:15-4:15 (market closes at 3:30)");
 console.log("🔗 Spreadsheet: https://docs.google.com/spreadsheets/d/1FNvmY09AhoraMbEG1XTSFY2ZmTX-zWR6xUKzBSGmaqs/edit");
 console.log("=".repeat(80) + "\n");
